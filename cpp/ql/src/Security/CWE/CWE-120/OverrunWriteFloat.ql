@@ -26,9 +26,9 @@ where
   not bw.hasExplicitLimit() and
   // has no explicit size limit
   destSize = getBufferSize(bw.getDest(), _) and
-  bw.getMaxData() > destSize and
   // and we can deduce that too much data may be copied
-  bw.getMaxDataLimited() <= destSize // but it would fit without long '%f' conversions
+  bw.getMaxDataEstimate(TFormattedSizeWithExtremeFloat()) > destSize
 select bw,
-  "This '" + bw.getBWDesc() + "' operation may require " + bw.getMaxData() +
+  "This '" + bw.getBWDesc() + "' operation may require " +
+    bw.getMaxDataEstimate(TFormattedSizeWithExtremeFloat()) +
     " bytes because of float conversions, but the target is only " + destSize + " bytes."

@@ -28,7 +28,8 @@ where
   destSize = getBufferSize(dest, _) and
   // we can deduce that too much data may be copied (even without
   // long '%f' conversions)
-  bw.getMaxDataLimited() > destSize
+  bw.getMaxDataEstimate(TFormattedSizeLimited()) > destSize
 select bw,
-  "This '" + bw.getBWDesc() + "' operation requires " + bw.getMaxData() +
-    " bytes but the destination is only " + destSize + " bytes."
+  "This '" + bw.getBWDesc() + "' operation requires " +
+    bw.getMaxDataEstimate(TFormattedSizeLimited()) + " bytes but the destination is only " +
+    destSize + " bytes."

@@ -65,19 +65,7 @@ abstract class BufferWrite extends Expr {
    */
   int getExplicitLimit() { none() }
 
-  /**
-   * Gets an upper bound to the amount of data that's being written (if one
-   * can be found).
-   */
-  int getMaxData() { none() }
-
-  /**
-   * Gets an upper bound to the amount of data that's being written (if one
-   * can be found), except that float to string conversions are assumed to be
-   * much smaller (8 bytes) than their true maximum length.  This can be
-   * helpful in determining the cause of a buffer overflow issue.
-   */
-  int getMaxDataLimited() { result = this.getMaxData() }
+  int getMaxDataEstimate(TFormattedSizeEstimateKind strategy) { none() }
 
   /**
    * Gets the size of a single character of the type this
@@ -135,9 +123,10 @@ class StrCopyBW extends BufferWriteCall {
     result = this.getArgument(this.getParamSize()).getValue().toInt() * this.getCharSize()
   }
 
-  override int getMaxData() {
+  override int getMaxDataEstimate(TFormattedSizeEstimateKind strategy) {
     result =
-      this.getArgument(this.getParamSrc()).(AnalysedString).getMaxLength() * this.getCharSize()
+      this.getArgument(this.getParamSrc()).(AnalysedString).getMaxLength() * this.getCharSize() and
+    strategy = strategy
   }
 }
 
@@ -173,9 +162,10 @@ class StrCatBW extends BufferWriteCall {
     result = this.getArgument(this.getParamSize()).getValue().toInt() * this.getCharSize()
   }
 
-  override int getMaxData() {
+  override int getMaxDataEstimate(TFormattedSizeEstimateKind strategy) {
     result =
-      this.getArgument(this.getParamSrc()).(AnalysedString).getMaxLength() * this.getCharSize()
+      this.getArgument(this.getParamSrc()).(AnalysedString).getMaxLength() * this.getCharSize() and
+    strategy = strategy
   }
 }
 
@@ -233,17 +223,10 @@ class SprintfBW extends BufferWriteCall {
 
   override Expr getDest() { result = this.getArgument(f.getOutputParameterIndex(false)) }
 
-  override int getMaxData() {
+  override int getMaxDataEstimate(TFormattedSizeEstimateKind strategy) {
     exists(FormatLiteral fl |
       fl = this.(FormattingFunctionCall).getFormat() and
-      result = fl.getMaxConvertedLength() * this.getCharSize()
-    )
-  }
-
-  override int getMaxDataLimited() {
-    exists(FormatLiteral fl |
-      fl = this.(FormattingFunctionCall).getFormat() and
-      result = fl.getMaxConvertedLengthLimited() * this.getCharSize()
+      result = fl.getMaxConvertedLength(strategy) * this.getCharSize()
     )
   }
 }
@@ -336,17 +319,10 @@ class SnprintfBW extends BufferWriteCall {
     result = this.getArgument(this.getParamSize()).getValue().toInt() * this.getCharSize()
   }
 
-  override int getMaxData() {
+  override int getMaxDataEstimate(TFormattedSizeEstimateKind strategy) {
     exists(FormatLiteral fl |
       fl = this.(FormattingFunctionCall).getFormat() and
-      result = fl.getMaxConvertedLength() * this.getCharSize()
-    )
-  }
-
-  override int getMaxDataLimited() {
-    exists(FormatLiteral fl |
-      fl = this.(FormattingFunctionCall).getFormat() and
-      result = fl.getMaxConvertedLengthLimited() * this.getCharSize()
+      result = fl.getMaxConvertedLength(strategy) * this.getCharSize()
     )
   }
 }
@@ -436,12 +412,13 @@ class ScanfBW extends BufferWrite {
 
   override Expr getDest() { result = this }
 
-  override int getMaxData() {
+  override int getMaxDataEstimate(TFormattedSizeEstimateKind strategy) {
     exists(ScanfFunctionCall fc, ScanfFormatLiteral fl, int arg |
       this = fc.getArgument(arg) and
       fl = fc.getFormat() and
       result = (fl.getMaxConvertedLength(arg - this.getParamArgs()) + 1) * this.getCharSize() // +1 is for the terminating null
-    )
+    ) and
+    strategy = strategy
   }
 
   override string getBWDesc() {
@@ -474,8 +451,9 @@ class RealpathBW extends BufferWriteCall {
 
   override Expr getASource() { result = this.getArgument(0) }
 
-  override int getMaxData() {
+  override int getMaxDataEstimate(TFormattedSizeEstimateKind strategy) {
     result = path_max() and
-    this = this // Suppress a compiler warning
+    this = this and
+    strategy = strategy // Suppress a compiler warning
   }
 }

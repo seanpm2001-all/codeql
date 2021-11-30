@@ -282,6 +282,10 @@ private int lengthInBase10(float f) {
   result = f.log10().floor() + 1
 }
 
+newtype TFormattedSizeEstimateKind =
+  TFormattedSizeWithExtremeFloat() or
+  TFormattedSizeLimited()
+
 /**
  * A class to represent format strings that occur as arguments to invocations of formatting functions.
  */
@@ -990,7 +994,8 @@ class FormatLiteral extends Literal {
    * conversion specifier of this format string; has no result if this cannot
    * be determined.
    */
-  int getMaxConvertedLength(int n) {
+  int getMaxConvertedLength(int n, TFormattedSizeEstimateKind strategy, boolean strategyRelevant) {
+    (strategyRelevant = true or strategyRelevant = false) and // avoid "is not bound"...
     exists(int len |
       (
         (
@@ -1008,18 +1013,26 @@ class FormatLiteral extends Literal {
         len = 1 // e.g. 'a'
         or
         this.getConversionChar(n).toLowerCase() = "f" and
-        exists(int dot, int afterdot |
-          (if this.getPrecision(n) = 0 then dot = 0 else dot = 1) and
-          (
-            (
-              if this.hasExplicitPrecision(n)
-              then afterdot = this.getPrecision(n)
-              else not this.hasImplicitPrecision(n)
-            ) and
-            afterdot = 6
-          ) and
-          len = 1 + 309 + dot + afterdot
-        ) // e.g. -1e308="-100000"...
+        (
+          if strategy = TFormattedSizeLimited()
+          then len = 8
+          else (
+            // we found a float, this is relevant for the WithFloat strat
+            strategyRelevant = true and
+            exists(int dot, int afterdot |
+              (if this.getPrecision(n) = 0 then dot = 0 else dot = 1) and
+              (
+                (
+                  if this.hasExplicitPrecision(n)
+                  then afterdot = this.getPrecision(n)
+                  else not this.hasImplicitPrecision(n)
+                ) and
+                afterdot = 6
+              ) and
+              len = 1 + 309 + dot + afterdot
+            ) // e.g. -1e308="-100000"...
+          )
+        )
         or
         this.getConversionChar(n).toLowerCase() = "e" and
         exists(int dot, int afterdot |
@@ -1176,19 +1189,6 @@ class FormatLiteral extends Literal {
   }
 
   /**
-   * Gets the maximum length of the string that can be produced by the nth
-   * conversion specifier of this format string, except that float to string
-   * conversions are assumed to be 8 characters.  This is helpful for
-   * determining whether a buffer overflow is caused by long float to string
-   * conversions.
-   */
-  int getMaxConvertedLengthLimited(int n) {
-    if this.getConversionChar(n).toLowerCase() = "f"
-    then result = this.getMaxConvertedLength(n).minimum(8)
-    else result = this.getMaxConvertedLength(n)
-  }
-
-  /**
    * Gets the constant part of the format string just before the nth
    * conversion specifier.  If `n` is zero, this will be the constant prefix
    * before the 0th specifier, otherwise it is the string between the end
@@ -1225,35 +1225,30 @@ class FormatLiteral extends Literal {
     )
   }
 
-  private int getMaxConvertedLengthAfter(int n) {
+  private int getMaxConvertedLengthAfter(
+    int n, TFormattedSizeEstimateKind strategy, boolean relevantForStrategy
+  ) {
+    (relevantForStrategy = true or relevantForStrategy = false) and // avoid "is not bound"...
     if n = this.getNumConvSpec()
-    then result = this.getConstantSuffix().length() + 1
+    then
+      // for the moment, the Limited strat is always relevant
+      (strategy = TFormattedSizeLimited() or relevantForStrategy = true) and
+      result = this.getConstantSuffix().length() + 1
     else
-      result =
-        this.getConstantPart(n).length() + this.getMaxConvertedLength(n) +
-          this.getMaxConvertedLengthAfter(n + 1)
+      exists(boolean strategyRelevantForThisSpec |
+        result =
+          this.getConstantPart(n).length() +
+            this.getMaxConvertedLength(n, strategy, strategyRelevantForThisSpec) +
+            this.getMaxConvertedLengthAfter(n + 1, strategy,
+              relevantForStrategy.booleanOr(strategyRelevantForThisSpec))
+      )
   }
 
-  private int getMaxConvertedLengthAfterLimited(int n) {
-    if n = this.getNumConvSpec()
-    then result = this.getConstantSuffix().length() + 1
-    else
-      result =
-        this.getConstantPart(n).length() + this.getMaxConvertedLengthLimited(n) +
-          this.getMaxConvertedLengthAfterLimited(n + 1)
+  int getMaxConvertedLength(TFormattedSizeEstimateKind strategy) {
+    (
+      strategy != TFormattedSizeWithExtremeFloat() or
+      exists(int n | this.getConversionChar(n).toLowerCase() = "f")
+    ) and
+    result = this.getMaxConvertedLengthAfter(0, strategy, false)
   }
-
-  /**
-   * Gets the maximum length of the string that can be produced by this format
-   * string.  Has no result if this cannot be determined.
-   */
-  int getMaxConvertedLength() { result = this.getMaxConvertedLengthAfter(0) }
-
-  /**
-   * Gets the maximum length of the string that can be produced by this format
-   * string, except that float to string conversions are assumed to be 8
-   * characters.  This is helpful for determining whether a buffer overflow
-   * is caused by long float to string conversions.
-   */
-  int getMaxConvertedLengthLimited() { result = this.getMaxConvertedLengthAfterLimited(0) }
 }
