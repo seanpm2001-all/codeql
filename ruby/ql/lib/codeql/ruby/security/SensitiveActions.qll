@@ -31,12 +31,6 @@ private predicate callWithIgnoredReturnValue(Call c) {
   not exists(ErbOutputDirective d | d.getAChildStmt() = c)
 }
 
-predicate cljdkasldjaslkd(AuthorizationCall c, boolean b) {
-  if exists(ErbOutputDirective d | d.getAChildStmt() = c.asExpr().getExpr())
-  then b = true
-  else b = false
-}
-
 /** A call that may perform authorization. */
 class AuthorizationCall extends SensitiveAction, DataFlow::CallNode {
   AuthorizationCall() {
@@ -50,10 +44,14 @@ class AuthorizationCall extends SensitiveAction, DataFlow::CallNode {
       not s.regexpMatch("(?i)(get|set).*") and
       // Setter calls are unlikely to be sensitive actions.
       not c instanceof SetterMethodCall and
-      // Only consider calls that have no return value (or ignore it) to be
-      // actions. Otherwise, we'd get a lot of noisy results from getter
-      // methods or other methods that are not actions.
-      callWithIgnoredReturnValue(c)
+      (
+        // Calls that have no return value (or ignore it) are likely to be
+        // to methods that are actions.
+        callWithIgnoredReturnValue(c)
+        or
+        // Method names ending in `!` are likely to be actions.
+        s.matches("%!")
+      )
     )
   }
 }
