@@ -3,6 +3,7 @@ private import codeql.ruby.security.performance.RegExpTreeView as RETV
 private import internal.AST
 private import internal.Scope
 private import internal.TreeSitter
+private import codeql.ruby.controlflow.CfgNodes
 
 /**
  * A literal.
@@ -321,9 +322,16 @@ class StringInterpolationComponent extends StringComponent, StmtSequence,
 
   final override Stmt getStmt(int n) { toGenerated(result) = g.getChild(n) }
 
-  final override string getValueText() { none() }
-
   final override string getAPrimaryQlClass() { result = "StringInterpolationComponent" }
+
+  // If last statement in the interpolation is a constant or local variable read,
+  // we attempt to look up its string value.
+  // If there's a result, we return that as the string value of the interpolation.
+  final override string getValueText() {
+    result = this.getLastStmt().(ConstantReadAccess).getValue().(StringlikeLiteral).getValueText()
+    or
+    exists(ExprCfgNode n | n.getNode() = this.getLastStmt() | result = n.getValueText())
+  }
 }
 
 /**
@@ -410,13 +418,12 @@ class StringlikeLiteral extends Literal, TStringlikeLiteral {
     result = ""
   }
 
+  // 0 components results in the empty string
+  // if all interpolations have a known string value, we will get a result
+  language[monotonicAggregates]
   override string getValueText() {
-    // 0 components should result in the empty string
-    // if there are any interpolations, there should be no result
-    // otherwise, concatenate all the components
-    forall(StringComponent c | c = this.getComponent(_) |
-      not c instanceof StringInterpolationComponent
-    ) and
+    not exists(this.getComponent(_)) and result = ""
+    or
     result =
       concat(StringComponent c, int i | c = this.getComponent(i) | c.getValueText() order by i)
   }
